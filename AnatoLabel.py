@@ -4,6 +4,16 @@ import json
 import os
 BASE_DIM = 1080  # original image size for normalization
 
+# Define colors for each AIS level (1-6)
+COLOR_MAP = {
+    1: '#A8E6CF',
+    2: '#FFD3B6',
+    3: '#FFB347',
+    4: '#F08D5B',
+    5: '#882827',
+    6: '#878787',
+}
+
 # Path to the base image (ensure Tool_example.png is in the same directory)
 IMAGE_PATH = os.path.join(os.path.dirname(__file__), 'Tool_exampl.png')
 
@@ -132,7 +142,7 @@ class AnatoLabel:
         master.title("AnatoLabel")
 
         self.annotations = {}
-        self.current_annotations = set()
+        self.current_annotations = {}  # mapping label to AIS level
         self.annotation_items = {}  # track canvas items per label
         self.undo_stack = []
         self.redo_stack = []
@@ -175,6 +185,8 @@ class AnatoLabel:
         # bind undo/redo
         self.master.bind("<Control-z>", self.undo)
         self.master.bind("<Control-y>", self.redo)
+        # after entering case number, press Enter to move focus away
+        self.case_entry.bind('<Return>', lambda e: self.canvas.focus_set())
 
     def load_image(self):
         self.image = tk.PhotoImage(file=IMAGE_PATH)
@@ -196,50 +208,88 @@ class AnatoLabel:
         # use scaled polygons
         for region, poly in self.scaled_regions.items():
             if point_in_poly(x, y, poly):
-                # map region to canonical label
                 label = region_to_group.get(region, region)
-                # toggle: if already selected, deselect
+                # If already annotated, toggle off (remove)
                 if label in self.current_annotations:
-                    # remove highlights
+                    # remove highlighted polygons
                     for iid in self.annotation_items.pop(label, []):
                         self.canvas.delete(iid)
-                    # remove from annotations set
-                    self.current_annotations.discard(label)
-                    # remove from listbox
-                    items = list(self.listbox.get(0, tk.END))
-                    if label in items:
-                        idx = items.index(label)
-                        self.listbox.delete(idx)
+                    # remove from data and listbox
+                    level = self.current_annotations.pop(label, None)
+                    for idx, itm in enumerate(self.listbox.get(0, tk.END)):
+                        if itm.startswith(label + ":"):
+                            self.listbox.delete(idx)
+                            break
                     return
-                # highlight all associated regions
-                item_ids = []
-                for r in region_groups.get(label, [label]):
-                    pts = self.scaled_regions.get(r)
-                    if not pts: continue
-                    flat = [coord for pt in pts for coord in pt]
-                    iid = self.canvas.create_polygon(flat, outline='red', fill='#B76E79', width=2, splinesteps=20)
-                    item_ids.append(iid)
-                self.annotation_items[label] = item_ids
-                self.current_annotations.add(label)
-                # record action for undo
-                self.undo_stack.append(('add', label))
-                self.redo_stack.clear()
-                # update listbox
-                self.listbox.insert(tk.END, label)
-                break
+                # Prompt user for AIS level
+                level_window = tk.Toplevel(self.master)
+                level_window.title(f"Select AIS level for {label}")
+                selected_level = tk.IntVar(value=1)
+
+                def confirm_level(event=None):
+                    lvl = selected_level.get()
+                    level_window.grab_release() # Release grab before destroying
+                    level_window.destroy()
+                    # proceed with annotation using lvl
+                    self.add_annotation(label, lvl)
+
+                def cancel_level():
+                    level_window.grab_release() # Release grab before destroying
+                    level_window.destroy()
+
+                # Radiobuttons for levels 1-6
+                for i in range(1, 7):
+                    rb = tk.Radiobutton(level_window, text=str(i), variable=selected_level, value=i)
+                    rb.pack(side=tk.LEFT)
+                    # bind number key
+                    level_window.bind(str(i), lambda e, v=i: selected_level.set(v))
+
+                confirm_btn = tk.Button(level_window, text="Confirm", command=confirm_level)
+                confirm_btn.pack(side=tk.LEFT)
+                level_window.bind('<Return>', confirm_level)
+                level_window.bind('<Escape>', lambda e: cancel_level())
+                level_window.protocol("WM_DELETE_WINDOW", cancel_level)
+                
+                # Ensure the new window gets focus and is modal
+                level_window.focus_set() # Give focus to the new window
+                level_window.grab_set() # Make the window modal
+                
+                return
+
+    def add_annotation(self, label, level):
+        """Helper to add annotation with AIS level and color."""
+        # highlight all associated regions with level color
+        item_ids = []
+        for r in region_groups.get(label, [label]):
+            pts = self.scaled_regions.get(r)
+            if not pts:
+                continue
+            flat = [coord for pt in pts for coord in pt]
+            color = COLOR_MAP.get(level, '#B76E79')
+            iid = self.canvas.create_polygon(flat, outline='red', fill=color, width=2, splinesteps=20)
+            item_ids.append(iid)
+        self.annotation_items[label] = item_ids
+        # record annotation
+        self.current_annotations[label] = level
+        # record action for undo
+        self.undo_stack.append(('add', label, level))
+        self.redo_stack.clear()
+        # update listbox entry
+        self.listbox.insert(tk.END, f"{label}: AIS{level}")
 
     def save_annotations(self, event=None):
         case_no = self.case_entry.get().strip()
         if not case_no:
             messagebox.showwarning("Input required", "Please enter case number.")
             return
-        self.annotations[case_no] = list(self.current_annotations)
+        # Save mapping of labels to AIS levels
+        self.annotations[case_no] = self.current_annotations.copy()
         with open('annotations.json', 'w') as f:
             json.dump(self.annotations, f, indent=2)
         messagebox.showinfo("Saved", f"Annotations saved for case {case_no}.")
 
     def new_case(self, event=None):
-        self.current_annotations.clear()
+        self.current_annotations.clear()  # clear label->level mapping
         self.canvas.delete("all")
         self.load_image()
         self.case_entry.delete(0, tk.END)
@@ -324,38 +374,40 @@ class AnatoLabel:
     def undo(self, event=None):
         if not self.undo_stack:
             return
-        action, label = self.undo_stack.pop()
+        action, label, level = self.undo_stack.pop()
         if action == 'add':
             # remove highlights
             for iid in self.annotation_items.pop(label, []):
                 self.canvas.delete(iid)
             # remove annotation
-            self.current_annotations.discard(label)
+            self.current_annotations.pop(label, None)
             # remove from listbox
             items = list(self.listbox.get(0, tk.END))
-            if label in items:
-                idx = items.index(label)
-                self.listbox.delete(idx)
+            for idx, itm in enumerate(items):
+                if itm.startswith(label + ":"):
+                    self.listbox.delete(idx)
+                    break
             # record for redo
-            self.redo_stack.append(('add', label))
+            self.redo_stack.append(('add', label, level))
 
     def redo(self, event=None):
         if not self.redo_stack:
             return
-        action, label = self.redo_stack.pop()
+        action, label, level = self.redo_stack.pop()
         if action == 'add':
-            # re-add highlights
+            # re-add annotation with saved AIS level
             item_ids = []
             for r in region_groups.get(label, [label]):
-                pts = body_regions.get(r)
+                pts = self.scaled_regions.get(r)
                 if not pts: continue
                 flat = [coord for pt in pts for coord in pt]
-                iid = self.canvas.create_polygon(flat, outline='red', fill='', width=2)
+                color = COLOR_MAP.get(level, '#B76E79')
+                iid = self.canvas.create_polygon(flat, outline='red', fill=color, width=2, splinesteps=20)
                 item_ids.append(iid)
             self.annotation_items[label] = item_ids
-            self.current_annotations.add(label)
-            self.listbox.insert(tk.END, label)
-            self.undo_stack.append(('add', label))
+            self.current_annotations[label] = level
+            self.listbox.insert(tk.END, f"{label}: AIS{level}")
+            self.undo_stack.append(('add', label, level))
 
 if __name__ == '__main__':
     root = tk.Tk()
