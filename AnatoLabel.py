@@ -250,44 +250,6 @@ class AnatoLabel:
                         return
         canv.bind('<Button-1>', on_report_click)
 
-    def undo(self, event=None):
-        if not self.undo_stack:
-            return
-        action, label, level = self.undo_stack.pop()
-        if action == 'add':
-            # remove highlights
-            for iid in self.annotation_items.pop(label, []):
-                self.canvas.delete(iid)
-            # remove annotation
-            self.current_annotations.pop(label, None)
-            # remove from listbox
-            items = list(self.listbox.get(0, tk.END))
-            for idx, itm in enumerate(items):
-                if itm.startswith(label + ":"):
-                    self.listbox.delete(idx)
-                    break
-            # record for redo
-            self.redo_stack.append(('add', label, level))
-
-    def redo(self, event=None):
-        if not self.redo_stack:
-            return
-        action, label, level = self.redo_stack.pop()
-        if action == 'add':
-            # re-add annotation with saved AIS level
-            item_ids = []
-            for r in region_groups.get(label, [label]):
-                pts = self.scaled_regions.get(r)
-                if not pts: continue
-                flat = [coord for pt in pts for coord in pt]
-                color = COLOR_MAP.get(level, '#B76E79')
-                iid = self.canvas.create_polygon(flat, outline='red', fill=color, width=2, splinesteps=20)
-                item_ids.append(iid)
-            self.annotation_items[label] = item_ids
-            self.current_annotations[label] = level
-            self.listbox.insert(tk.END, f"{label}: AIS{level}")
-            self.undo_stack.append(('add', label, level))
-
 if __name__ == '__main__':
     root = tk.Tk()
     app = AnatoLabel(root)
