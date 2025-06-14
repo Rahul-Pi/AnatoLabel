@@ -144,8 +144,6 @@ class AnatoLabel:
         self.annotations = {}
         self.current_annotations = {}  # mapping label to AIS level
         self.annotation_items = {}  # track canvas items per label
-        self.undo_stack = []
-        self.redo_stack = []
 
         self.setup_ui()
         self.load_image()
@@ -182,9 +180,6 @@ class AnatoLabel:
         self.canvas.bind("<Button-1>", self.on_click)
         self.master.bind("<Control-s>", self.save_annotations)
         self.master.bind("<Control-n>", self.new_case)
-        # bind undo/redo
-        self.master.bind("<Control-z>", self.undo)
-        self.master.bind("<Control-y>", self.redo)
         # after entering case number, press Enter to move focus away
         self.case_entry.bind('<Return>', lambda e: self.canvas.focus_set())
 
@@ -271,9 +266,6 @@ class AnatoLabel:
         self.annotation_items[label] = item_ids
         # record annotation
         self.current_annotations[label] = level
-        # record action for undo
-        self.undo_stack.append(('add', label, level))
-        self.redo_stack.clear()
         # update listbox entry
         self.listbox.insert(tk.END, f"{label}: AIS{level}")
 
@@ -296,8 +288,6 @@ class AnatoLabel:
         # clear annotation listbox
         self.listbox.delete(0, tk.END)
         # reset undo/redo
-        self.undo_stack.clear()
-        self.redo_stack.clear()
         self.annotation_items.clear()
 
     def import_dataset(self):
