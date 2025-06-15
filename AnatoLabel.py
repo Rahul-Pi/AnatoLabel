@@ -150,7 +150,7 @@ class AnatoLabel:
                 continue
             flat = [coord for pt in pts for coord in pt]
             color = COLOR_MAP.get(level, '#B76E79')
-            iid = self.canvas.create_polygon(flat, outline='red', fill=color, width=2, splinesteps=20)
+            iid = self.canvas.create_polygon(flat, fill=color, splinesteps=20)
             item_ids.append(iid)
         self.annotation_items[label] = item_ids
         # record annotation
