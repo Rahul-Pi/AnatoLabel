@@ -42,7 +42,7 @@ AnatoLabel is a web-based tool for annotating anatomical regions with Abbreviate
   - Click on a body part in the report to see a list of cases and their AIS levels.
 - **Keyboard Shortcuts**
   - `Ctrl+S`: Save current annotations.
-  - `Ctrl+Shift+N`: Start a new case (clear current annotations).
+  - `Alt+N`: Start a new case (clear current annotations).
   - `Enter`: Load case annotations or confirm AIS level in the modal.
   - AIS Modal:
     - Number keys `1` to `6`: Select AIS level.
