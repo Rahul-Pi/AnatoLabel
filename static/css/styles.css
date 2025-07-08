@@ -106,16 +106,6 @@ body {
     height: auto;
 }
 
-.clickable-path {
-    cursor: pointer !important;
-    transition: all 0.1s ease;
-}
-
-.clickable-path:hover {
-    fill: #e3f2fd !important;
-    fill-opacity: 0.5 !important;
-}
-
 .side-panel {
     width: 300px;
     background: white;
@@ -346,17 +336,6 @@ body {
 
 #annotation-modal {
     /* ... existing styles ... */
-}
-
-.svg-path:hover {
-    stroke: #ff0000;
-    stroke-width: 2px;
-    cursor: pointer;
-}
-
-.interactive-path {
-    pointer-events: all;
-    fill: transparent; /* Make sure paths are clickable even if they have no visible fill */
 }
 
 @media (max-width: 768px) {
