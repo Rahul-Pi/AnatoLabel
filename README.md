@@ -4,9 +4,15 @@ AnatoLabel is a web-based tool for annotating anatomical regions with Abbreviate
 
 ---
 
-## Screenshot
+## Screenshots
 
-![Tool Screenshot](Tool_exampl.png)
+**Annotation Interface**
+
+![Annotation Interface](assets/AnatoLabel_main_screen.png)
+
+**Injury Report**
+
+![Injury Report](assets/AnatoLabel_report.png)
 
 ---
 
@@ -47,7 +53,7 @@ AnatoLabel is a web-based tool for annotating anatomical regions with Abbreviate
 
 ## Requirements
 
-- Python 3.x
+- Python 3.13
 - Flask (`pip install flask`)
 - A modern web browser (Chrome, Edge, Firefox, etc.)
 
@@ -65,8 +71,8 @@ AnatoLabel is a web-based tool for annotating anatomical regions with Abbreviate
 2. **Ensure the following files are in the same directory:**
     - `AnatoLabel.py` (the main Flask application)
     - `anatomial_config.py` (configuration for body regions and colors)
-    - `Tool_exampl.png` (the base image for the screenshot)
     - `Tool_example.svg` (the SVG anatomical diagram)
+    - `templates/index.html` (the front end of the application)
 
 3. **Install dependencies:**
     ```bash
@@ -102,7 +108,7 @@ AnatoLabel is a web-based tool for annotating anatomical regions with Abbreviate
    - Press `Ctrl+S` or click "Save" to save annotations for the current case to `annotations.json`.
 
 6. **New Case:**  
-   - Click "New Case" or use `Ctrl+Shift+N` to clear current annotations and start a new case.
+   - Click "New Case" or use `Alt+N` to clear current annotations and start a new case.
 
 7. **Import Dataset:**  
    - Click "Import Dataset" to load annotations from an existing JSON file. This merges with current data.
@@ -114,7 +120,7 @@ AnatoLabel is a web-based tool for annotating anatomical regions with Abbreviate
 
 ## 🤝 Contribute
 
-Contributions are welcome! If you find a bug or have a feature request, please open an issue on the GitHub repository. Pull requests are also welcome.
+Contributions are welcome! If you find a bug or have a feature request, please open an issue on the GitHub repository.
 
 ---
 
