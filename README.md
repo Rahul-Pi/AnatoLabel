@@ -70,7 +70,7 @@ AnatoLabel is a web-based tool for annotating anatomical regions with Abbreviate
 
 2. **Ensure the following files are in the same directory:**
     - `AnatoLabel.py` (the main Flask application)
-    - `anatomial_config.py` (configuration for body regions and colors)
+    - `anatomical_config.py` (configuration for body regions and colors)
     - `Tool_example.svg` (the SVG anatomical diagram)
     - `templates/index.html` (the front end of the application)
 
