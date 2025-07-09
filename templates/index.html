@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AnatoLabel - Web Edition</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <div class="header">
+        <h1>AnatoLabel - Web Edition</h1>
+        <div class="toolbar">
+            <label for="caseInput">Case #:</label>
+            <input type="text" id="caseInput" placeholder="Enter case number">
+            <button class="btn btn-secondary" onclick="loadAnnotations()">Load Case</button>
+            <button class="btn btn-secondary" onclick="importDataset()">Import Dataset</button>
+            <button class="btn" onclick="saveAnnotations()">Save (Ctrl+S)</button>
+            <button class="btn btn-secondary" onclick="newCase()">New Case (Alt+N)</button>
+            <button class="btn btn-secondary" onclick="showReport()">Report</button>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="canvas-container">
+            <div class="canvas-wrapper">
+                <div id="anatomySvg"></div>
+            </div>
+        </div>
+
+        <div class="side-panel">
+            <div class="panel-header">
+                <h3>Annotated Parts</h3>
+            </div>
+            <div class="annotations-list" id="annotationsList">
+                <p style="text-align: center; color: #6c757d; margin-top: 2rem;">No annotations yet. Click on body parts to annotate.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- AIS Level Selection Modal -->
+    <div id="aisModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Select AIS Level for <span id="selectedBodyPart"></span></h3>
+            </div>
+            <div class="ais-levels">
+                <button class="ais-btn level-1" onclick="selectAIS(1)">1</button>
+                <button class="ais-btn level-2" onclick="selectAIS(2)">2</button>
+                <button class="ais-btn level-3" onclick="selectAIS(3)">3</button>
+                <button class="ais-btn level-4" onclick="selectAIS(4)">4</button>
+                <button class="ais-btn level-5" onclick="selectAIS(5)">5</button>
+                <button class="ais-btn level-6" onclick="selectAIS(6)">6</button>
+            </div>
+            <div class="modal-buttons">
+                <button class="btn btn-danger" onclick="closeModal()">Cancel</button>
+                <button class="btn" onclick="confirmAIS()">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Report Modal -->
+    <div id="reportModal" class="report-modal">
+        <div class="report-content">
+            <div class="report-header">
+                <h2>Injury Report</h2>
+                <button class="btn btn-danger" onclick="closeReport()">Close</button>
+            </div>
+            <div class="report-body">
+                <div class="report-canvas-container">
+                    <div id="reportSvg"></div>
+                </div>
+                <div class="report-sidebar">
+                    <div class="case-list">
+                        <h4>Cases for Selected Part:</h4>
+                        <div id="casesList">
+                            <p style="text-align: center; color: #6c757d;">Click on a body part to see cases</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- File input for import (hidden) -->
+    <input type="file" id="fileInput" accept=".json" style="display: none;" onchange="handleFileImport(event)">
+
+    <!-- Status message container -->
+    <div id="statusMessage" class="status-message"></div>
+
+    <script>
+        // Global variables
+        let config = {};
+        let currentAnnotations = {};
+        let currentCase = '';
+        let selectedBodyPart = '';
+        let selectedAISLevel = 1;
+        let svgContainer;
+        let svgElement;
+
+        // Initialize the application
+        async function init() {
+            console.log('Initializing application...');
+            try {
+                svgContainer = document.getElementById('anatomySvg');
+                console.log('SVG container found:', !!svgContainer);
+                
+                // Load configuration
+                await loadConfig();
+                
+                // Load and display the SVG
+                await loadAnatomySvg();
+                
+                // Add a small delay to ensure DOM is ready
+                setTimeout(() => {
+                    // Set up event listeners
+                    setupEventListeners();
+                    
+                    // DON'T auto-load annotations on init - let user control this
+                    
+                    console.log('Application initialized successfully');
+                }, 100);
+                
+            } catch (error) {
+                console.error('Error initializing application:', error);
+                showStatus('Error initializing application', 'error');
+            }
+        }
+
+        async function loadConfig() {
+            try {
+                const response = await fetch('/api/config');
+                config = await response.json();
+                console.log('Config loaded:', config);
+            } catch (error) {
+                console.error('Error loading config:', error);
+                showStatus('Error loading configuration', 'error');
+            }
+        }
+
+        async function loadAnatomySvg() {
+            try {
+                console.log('Loading SVG...');
+                const response = await fetch('/api/svg');
+                const svgContent = await response.text();
+                console.log('SVG content length:', svgContent.length);
+                svgContainer.innerHTML = svgContent;
+                svgElement = svgContainer.querySelector('svg');
+                console.log('SVG element found:', !!svgElement);
+                
+                if (svgElement) {
+                    // Make SVG responsive
+                    svgElement.style.width = '100%';
+                    svgElement.style.height = 'auto';
+                    console.log('SVG loaded successfully');
+                } else {
+                    console.error('SVG element not found in container');
+                }
+            } catch (error) {
+                console.error('Error loading SVG:', error);
+                showStatus('Error loading anatomy diagram', 'error');
+            }
+        }
+
+        function setupEventListeners() {
+            console.log('Setting up event listeners...');
+            
+            if (!svgElement) {
+                console.error('SVG element not found in setupEventListeners');
+                return;
+            }
+
+            const allPaths = svgElement.querySelectorAll('path');
+            console.log('Found', allPaths.length, 'SVG paths');
+            
+            allPaths.forEach(path => {
+                if (path.id && path.id.trim() !== '') {
+                    path.style.cursor = 'pointer';
+                    
+                    path.addEventListener('click', function(event) {
+                        const pathId = event.target.id;
+                        console.log('Path clicked:', pathId);
+                        
+                        handlePathClick(pathId);
+                    });
+                    
+                }
+            });
+            
+            console.log('Event listeners set up successfully');
+            
+            // Keyboard shortcuts
+            document.addEventListener('keydown', function(e) {
+                if (e.ctrlKey && e.key === 's') {
+                    e.preventDefault();
+                    saveAnnotations();
+                } else if (e.altKey && e.key === 'n') {
+                    e.preventDefault();
+                    newCase();
+                } else if (e.key >= '1' && e.key <= '6') {
+                    if (document.getElementById('aisModal').style.display === 'block') {
+                        selectAIS(parseInt(e.key));
+                    }
+                } else if (e.key === 'Enter') {
+                    if (document.getElementById('aisModal').style.display === 'block') {
+                        confirmAIS();
+                    }
+                } else if (e.key === 'Escape') {
+                    closeModal();
+                    closeReport();
+                }
+            });
+        }
+
+        function handlePathClick(pathId) {
+            console.log('Handling path click for:', pathId);
+            
+            const caseId = document.getElementById('caseInput').value.trim();
+            if (!caseId) {
+                showStatus('Please enter a case number', 'error');
+                return;
+            }
+
+            // Map SVG path ID to body part group
+            const label = getBodyPartLabel(pathId);
+            console.log('Body part label:', label);
+            if (!label) {
+                console.log('No label found for path ID:', pathId);
+                return;
+            }
+
+            // If already annotated, remove it
+            if (currentAnnotations[label]) {
+                console.log('Removing annotation for:', label);
+                removeAnnotation(label);
+                return;
+            }
+            
+            // Otherwise, show AIS level selection
+            console.log('Showing AIS modal for:', label);
+            selectedBodyPart = label;
+            showAISModal();
+        }
+
+        function getBodyPartLabel(pathId) {
+            console.log('Getting body part label for:', pathId);
+            
+            // Use the config from the backend to map SVG path IDs to body part groups
+            if (!config.region_to_group) {
+                console.warn('region_to_group not found in config, using pathId as label');
+                return pathId;
+            }
+            
+            // First, try direct mapping from region_to_group
+            const directMapping = config.region_to_group[pathId];
+            if (directMapping) {
+                console.log('Direct mapping found:', pathId, '->', directMapping);
+                return directMapping;
+            }
+            
+            // If not found, check if this pathId exists in any group
+            for (const [groupName, regions] of Object.entries(config.region_groups || {})) {
+                if (regions.includes(pathId)) {
+                    console.log('Found in group:', pathId, '->', groupName);
+                    return groupName;
+                }
+            }
+            
+            console.warn('No mapping found for path ID:', pathId);
+            return pathId; // Return the original ID so we can still use it
+        }
+
+        function showAISModal() {
+            document.getElementById('selectedBodyPart').textContent = selectedBodyPart;
+            document.getElementById('aisModal').style.display = 'block';
+            selectedAISLevel = 1;
+            updateAISSelection();
+        }
+
+        function selectAIS(level) {
+            selectedAISLevel = level;
+            updateAISSelection();
+        }
+
+        function updateAISSelection() {
+            document.querySelectorAll('.ais-btn').forEach(btn => {
+                btn.classList.remove('selected');
+            });
+            document.querySelector(`.ais-btn.level-${selectedAISLevel}`).classList.add('selected');
+        }
+
+        function confirmAIS() {
+            addAnnotation(selectedBodyPart, selectedAISLevel);
+            closeModal();
+        }
+
+        function closeModal() {
+            document.getElementById('aisModal').style.display = 'none';
+        }
+
+        function addAnnotation(label, level) {
+            currentAnnotations[label] = level;
+            
+            // Update SVG with annotations
+            updateSvgAnnotations();
+            
+            // Update annotations list
+            updateAnnotationsList();
+        }
+
+        function removeAnnotation(label) {
+            delete currentAnnotations[label];
+            updateSvgAnnotations();
+            updateAnnotationsList();
+        }
+
+        function updateSvgAnnotations() {
+            if (!svgElement) return;
+            
+            // Create interactive path IDs set
+            const interactivePathIds = new Set();
+            if (config.region_groups) {
+                for (const groupRegions of Object.values(config.region_groups)) {
+                    groupRegions.forEach(pathId => interactivePathIds.add(pathId));
+                }
+            }
+            
+            // Reset only interactive paths to default style
+            const paths = svgElement.querySelectorAll('path');
+            paths.forEach(path => {
+                if (path.id && path.id.trim() !== '' && interactivePathIds.has(path.id)) {
+                    path.style.fill = 'none';
+                    path.style.fillOpacity = '1';
+                    path.style.stroke = 'black';
+                    path.style.strokeWidth = '1px';
+                }
+            });
+            
+            // Apply annotations
+            for (const [label, level] of Object.entries(currentAnnotations)) {
+                const color = config.color_map[level] || '#B76E79';
+                
+                // Find all paths that belong to this body part
+                const pathIds = getPathIdsForBodyPart(label);
+                pathIds.forEach(pathId => {
+                    const path = svgElement.querySelector(`#${pathId}`);
+                    if (path) {
+                        path.style.fill = color;
+                        path.style.fillOpacity = '0.7';
+                        path.style.stroke = 'black';
+                        path.style.strokeWidth = '2px';
+                    }
+                });
+            }
+        }
+
+        function getPathIdsForBodyPart(label) {
+            // Use the config from the backend to get all path IDs for a body part group
+            if (!config.region_groups) {
+                console.warn('region_groups not found in config, using label as single ID');
+                return [label];
+            }
+            
+            // If the label exists as a group, return all regions in that group
+            if (config.region_groups[label]) {
+                console.log('Found group for', label, ':', config.region_groups[label]);
+                return config.region_groups[label];
+            }
+            
+            // Fallback: return the label as a single ID
+            console.warn('No group found for', label, 'using as single ID');
+            return [label];
+        }
+
+        function updateAnnotationsList() {
+            const listContainer = document.getElementById('annotationsList');
+            
+            if (Object.keys(currentAnnotations).length === 0) {
+                listContainer.innerHTML = '<p style="text-align: center; color: #6c757d; margin-top: 2rem;">No annotations yet. Click on body parts to annotate.</p>';
+                return;
+            }
+            
+            let html = '';
+            for (const [label, level] of Object.entries(currentAnnotations)) {
+                html += `
+                    <div class="annotation-item ais-${level}">
+                        <span class="annotation-label">${label}</span>
+                        <div>
+                            <span class="annotation-level">AIS ${level}</span>
+                            <button class="remove-btn" onclick="removeAnnotation('${label}')">Remove</button>
+                        </div>
+                    </div>
+                `;
+            }
+            listContainer.innerHTML = html;
+        }
+
+        async function saveAnnotations() {
+            const caseId = document.getElementById('caseInput').value.trim();
+            if (!caseId) {
+                showStatus('Please enter a case number', 'error');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/annotations/${caseId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(currentAnnotations)
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    showStatus(result.message, 'success');
+                } else {
+                    showStatus(result.error, 'error');
+                }
+            } catch (error) {
+                console.error('Error saving annotations:', error);
+                showStatus('Error saving annotations', 'error');
+            }
+        }
+
+        async function loadAnnotations() {
+            const caseId = document.getElementById('caseInput').value.trim();
+            if (!caseId) return;
+            
+            console.log('=== LOADING ANNOTATIONS ===');
+            console.log('Loading annotations for case:', caseId);
+            
+            try {
+                const response = await fetch(`/api/annotations/${caseId}`);
+                const loadedAnnotations = await response.json();
+                
+                console.log('Response from server:', loadedAnnotations);
+                console.log('Type of response:', typeof loadedAnnotations);
+                console.log('Is empty object?', Object.keys(loadedAnnotations).length === 0);
+                
+                currentAnnotations = loadedAnnotations;
+                
+                console.log('Current annotations after loading:', currentAnnotations);
+                
+                updateSvgAnnotations();
+                updateAnnotationsList();
+                
+                console.log('=== ANNOTATIONS LOADED ===');
+            } catch (error) {
+                console.error('Error loading annotations:', error);
+            }
+        }
+
+        function newCase() {
+            document.getElementById('caseInput').value = '';
+            currentAnnotations = {};
+            updateSvgAnnotations();
+            updateAnnotationsList();
+        }
+
+        function importDataset() {
+            document.getElementById('fileInput').click();
+        }
+
+        async function handleFileImport(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            try {
+                const text = await file.text();
+                const data = JSON.parse(text);
+                
+                const response = await fetch('/api/import', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    showStatus(result.message, 'success');
+                } else {
+                    showStatus(result.error, 'error');
+                }
+            } catch (error) {
+                console.error('Error importing dataset:', error);
+                showStatus('Error importing dataset', 'error');
+            }
+        }
+
+        async function showReport() {
+            try {
+                const response = await fetch('/api/report');
+                const reportData = await response.json();
+                
+                document.getElementById('reportModal').style.display = 'block';
+                await drawReport(reportData);
+            } catch (error) {
+                console.error('Error loading report:', error);
+                showStatus('Error loading report', 'error');
+            }
+        }
+
+        async function drawReport(reportData) {
+            const reportContainer = document.querySelector('.report-canvas-container');
+            
+            // Load SVG for report
+            const response = await fetch('/api/svg');
+            const svgContent = await response.text();
+            reportContainer.innerHTML = svgContent;
+            
+            const reportSvg = reportContainer.querySelector('svg');
+            reportSvg.style.width = '100%';
+            reportSvg.style.height = 'auto';
+            
+            // Reset all paths to default style
+            const paths = reportSvg.querySelectorAll('path');
+            paths.forEach(path => {
+                path.style.fill = 'none';
+                path.style.fillOpacity = '1';
+                path.style.stroke = 'black';
+                path.style.strokeWidth = '1px';
+                path.style.cursor = 'pointer';
+            });
+            
+            // Apply intensity map
+            for (const [part, cases] of Object.entries(reportData.case_map)) {
+                const intensity = cases.length / reportData.max_count;
+                const red = 255;
+                const green = Math.floor(255 * (1 - intensity));
+                const blue = Math.floor(255 * (1 - intensity));
+                const color = `rgb(${red}, ${green}, ${blue})`;
+                
+                const pathIds = getPathIdsForBodyPart(part);
+                pathIds.forEach(pathId => {
+                    const path = reportSvg.querySelector(`#${pathId}`);
+                    if (path) {
+                        path.style.fill = color;
+                        path.style.fillOpacity = '0.7';
+                        path.style.stroke = 'black';
+                        path.style.strokeWidth = '2px';
+                    }
+                });
+            }
+            
+            // Add click handlers
+            paths.forEach(path => {
+                path.addEventListener('click', function(event) {
+                    const pathId = event.target.id;
+                    const label = getBodyPartLabel(pathId);
+                    const cases = reportData.case_map[label] || [];
+                    
+                    const casesList = document.getElementById('casesList');
+                    if (cases.length > 0) {
+                        let html = cases.map(item => 
+                            `<div class="case-item">${item.case}: AIS ${item.ais}</div>`
+                        ).join('');
+                        casesList.innerHTML = html;
+                    } else {
+                        casesList.innerHTML = '<p style="text-align: center; color: #6c757d;">No cases for this part</p>';
+                    }
+                });
+            });
+        }
+
+        function closeReport() {
+            document.getElementById('reportModal').style.display = 'none';
+        }
+
+        function showStatus(message, type) {
+            const statusEl = document.getElementById('statusMessage');
+            statusEl.textContent = message;
+            statusEl.className = `status-message ${type}`;
+            statusEl.classList.add('show');
+            
+            setTimeout(() => {
+                statusEl.classList.remove('show');
+            }, 3000);
+        }
+
+        // Manual case annotation loading - only when user explicitly requests it
+        document.getElementById('caseInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                loadAnnotations();
+            }
+        });
+
+        // Initialize the application when the page loads
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>
