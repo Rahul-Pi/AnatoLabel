@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, jsonify, send_from_directory
 import json
 import os
-from anatomial_config import COLOR_MAP, region_groups
+from anatomical_config import COLOR_MAP, region_groups
 
 app = Flask(__name__)
 
