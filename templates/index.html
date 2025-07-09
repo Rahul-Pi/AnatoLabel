@@ -172,38 +172,17 @@
             const allPaths = svgElement.querySelectorAll('path');
             console.log('Found', allPaths.length, 'SVG paths');
             
-            // EXACTLY like report window - no filtering, just direct listeners
             allPaths.forEach(path => {
                 if (path.id && path.id.trim() !== '') {
                     path.style.cursor = 'pointer';
                     
-                    // IDENTICAL to report window - direct click handler
                     path.addEventListener('click', function(event) {
                         const pathId = event.target.id;
                         console.log('Path clicked:', pathId);
                         
-                        // Same logic as report, but for labeling
-                        const caseId = document.getElementById('caseInput').value.trim();
-                        if (!caseId) {
-                            showStatus('Please enter a case number', 'error');
-                            return;
-                        }
-                        
-                        const label = getBodyPartLabel(pathId);
-                        if (!label) return;
-                        
-                        // If already annotated, remove it
-                        if (currentAnnotations[label]) {
-                            removeAnnotation(label);
-                            return;
-                        }
-                        
-                        // Otherwise, show AIS level selection
-                        selectedBodyPart = label;
-                        showAISModal();
+                        handlePathClick(pathId);
                     });
                     
-                    // NO HOVER EFFECTS - keep it identical to report
                 }
             });
             
